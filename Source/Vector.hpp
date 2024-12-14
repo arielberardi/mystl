@@ -4,17 +4,28 @@
 #include <memory>
 #include <ostream>
 
-// Implement custom Allocators
 // Implement iterators for ranges
 
 namespace MySTL {
 
-template <typename T>
+template <typename T, typename Allocator = std::allocator<T>>
 class Vector {
  public:
-  Vector() = default;
+  using value_type = T;
+  using allocator_type = std::allocator_traits<Allocator>::allocator_type;
+  using size_type = std::allocator_traits<Allocator>::size_type;
+  using pointer = std::allocator_traits<Allocator>::pointer;
+  using const_pointer = std::allocator_traits<Allocator>::const_pointer;
+  using reference = value_type&;
+  using const_reference = const value_type&;
 
-  constexpr Vector(size_t count, const T& item) noexcept {
+  static_assert(std::is_same<typename allocator_type::value_type, value_type>::value,
+                "Container must be same value_type as its allocator");
+
+  explicit constexpr Vector(const Allocator& alloc = Allocator()) noexcept : m_alloc(alloc) {};
+  explicit constexpr Vector(size_t count, const T& item,
+                            const Allocator& alloc = Allocator()) noexcept
+      : m_alloc(alloc) {
     reserve(count);
 
     for (size_t i{}; i < count; ++i) {
@@ -22,7 +33,9 @@ class Vector {
     }
   }
 
-  constexpr Vector(const std::initializer_list<T>& items) noexcept {
+  constexpr Vector(const std::initializer_list<T>& items,
+                   const Allocator& alloc = Allocator()) noexcept
+      : m_alloc(alloc) {
     reserve(items.size());
 
     for (auto&& item : items) {
@@ -30,19 +43,8 @@ class Vector {
     }
   };
 
-  constexpr ~Vector() noexcept {
-    clear();
-
-    if (m_data) {
-      ::operator delete(m_data);
-    }
-
-    m_data = nullptr;
-    m_capacity = 0;
-    m_size = 0;
-  };
-
-  constexpr Vector(const Vector& other) noexcept {
+  constexpr Vector(const Vector& other, const Allocator& alloc = Allocator{}) noexcept
+      : m_alloc(alloc) {
     reserve(other.size());
 
     for (size_t i{}; i < other.size(); ++i) {
@@ -50,20 +52,32 @@ class Vector {
     }
   };
 
-  constexpr Vector(Vector&& other) noexcept {
+  constexpr Vector(Vector&& other, const Allocator& alloc = Allocator{}) noexcept : m_alloc(alloc) {
     reserve(other.m_capacity);
     m_size = other.m_size;
     m_data = other.m_data;
 
     other.clear();
-    other.m_capacity = 0;
-    other.m_size = 0;
 
     if (other.m_data) {
-      ::operator delete(other.m_data);
+      std::allocator_traits<Allocator>::deallocate(other.m_alloc, other.m_data, other.m_capacity);
     }
 
+    other.m_capacity = 0;
+    other.m_size = 0;
     other.m_data = nullptr;
+  };
+
+  constexpr ~Vector() noexcept {
+    clear();
+
+    if (m_data) {
+      std::allocator_traits<Allocator>::deallocate(m_alloc, m_data, m_capacity);
+    }
+
+    m_data = nullptr;
+    m_capacity = 0;
+    m_size = 0;
   };
 
   constexpr Vector& operator=(const Vector& other) noexcept {
@@ -92,13 +106,12 @@ class Vector {
     m_data = other.m_data;
 
     other.clear();
-    other.m_size = 0;
-    other.m_capacity = 0;
-
     if (other.m_data) {
-      ::operator delete(other.m_data);
+      std::allocator_traits<Allocator>::deallocate(other.m_alloc, other.m_data, other.m_capacity);
     }
 
+    other.m_size = 0;
+    other.m_capacity = 0;
     other.m_data = nullptr;
     return *this;
   };
@@ -118,20 +131,20 @@ class Vector {
       return;
     }
 
-    T* newData = static_cast<T*>(::operator new(capacity * sizeof(T)));
+    pointer newData = std::allocator_traits<Allocator>::allocate(m_alloc, capacity);
 
     if (m_data) {
       for (size_t i{}; i < m_size; ++i) {
-        new (newData + i) T{std::move(m_data[i])};
+        std::allocator_traits<Allocator>::construct(m_alloc, newData + i, std::move(m_data[i]));
       }
     }
 
     if (m_data) {
       for (size_t i{}; i < m_size; i++) {
-        m_data[i].~T();
+        std::allocator_traits<Allocator>::destroy(m_alloc, m_data + i);
       }
 
-      ::operator delete(m_data);
+      std::allocator_traits<Allocator>::deallocate(m_alloc, m_data, m_capacity);
     }
 
     m_capacity = capacity;
@@ -163,24 +176,18 @@ class Vector {
       return;
     }
 
-    T* newData = static_cast<T*>(::operator new(m_size * sizeof(T)));
+    pointer newData = std::allocator_traits<Allocator>::allocate(m_alloc, m_size);
 
     if (m_data) {
       for (size_t i{}; i < m_size; ++i) {
-        new (newData + i) T{m_data[i]};
+        std::allocator_traits<Allocator>::construct(m_alloc, newData + i, m_data[i]);
       }
 
       for (size_t i{}; i < m_size; ++i) {
-        m_data[i].~T();
-      }
-    }
-
-    if (m_data) {
-      for (size_t i{}; i < m_size; i++) {
-        m_data[i].~T();
+        std::allocator_traits<Allocator>::destroy(m_alloc, m_data + i);
       }
 
-      ::operator delete(m_data);
+      std::allocator_traits<Allocator>::deallocate(m_alloc, m_data, m_capacity);
     }
 
     m_capacity = m_size;
@@ -205,26 +212,26 @@ class Vector {
       newCapacity = (m_size + count) * 2;
     }
 
-    T* newData = static_cast<T*>(::operator new(newCapacity * sizeof(T)));
+    pointer newData = std::allocator_traits<Allocator>::allocate(m_alloc, newCapacity);
 
     for (size_t i{}; i < pos; i++) {
-      new (newData + i) T{m_data[i]};
+      std::allocator_traits<Allocator>::construct(m_alloc, newData + i, m_data[i]);
     }
 
     for (size_t i{}; i < count; i++) {
-      new (newData + pos + i) T{value};
+      std::allocator_traits<Allocator>::construct(m_alloc, newData + pos + i, value);
     }
 
     for (size_t i{pos}; i < m_size; i++) {
-      new (newData + count + i) T{m_data[i]};
+      std::allocator_traits<Allocator>::construct(m_alloc, newData + count + i, m_data[i]);
     }
 
     if (m_data) {
       for (size_t i{}; i < m_size; i++) {
-        m_data[i].~T();
+        std::allocator_traits<Allocator>::destroy(m_alloc, m_data + i);
       }
 
-      ::operator delete(m_data);
+      std::allocator_traits<Allocator>::deallocate(m_alloc, m_data, m_capacity);
     }
 
     m_capacity = newCapacity;
@@ -237,13 +244,13 @@ class Vector {
   constexpr void push_back(const T& item) noexcept {
     expandCapacity();
 
-    new (m_data + m_size++) T{item};
+    std::allocator_traits<Allocator>::construct(m_alloc, m_data + m_size++, item);
   }
 
   constexpr void push_back(T&& item) noexcept {
     expandCapacity();
 
-    new (m_data + m_size++) T{std::move(item)};
+    std::allocator_traits<Allocator>::construct(m_alloc, m_data + m_size++, std::move(item));
   }
 
   constexpr void pop_back() noexcept {
@@ -251,14 +258,15 @@ class Vector {
       return;
     }
 
-    m_data[m_size--].~T();
+    std::allocator_traits<Allocator>::destroy(m_alloc, m_data + m_size--);
   }
 
   template <typename... Args>
   constexpr void emplace_back(Args&&... args) noexcept {
     expandCapacity();
 
-    new (m_data + m_size++) T(std::forward<Args>(args)...);
+    std::allocator_traits<Allocator>::construct(m_alloc, m_data + m_size++,
+                                                std::forward<Args>(args)...);
   }
 
   template <typename... Args>
@@ -268,40 +276,46 @@ class Vector {
     }
 
     size_t newCapacity = m_capacity;
-    if (m_size + 1 >= m_capacity) {
+    size_t newSize = m_size + 1;
+
+    if (newSize >= m_capacity) {
       newCapacity = m_capacity * 2;
     }
 
-    T* newData = static_cast<T*>(::operator new(newCapacity * sizeof(T)));
+    pointer newData = std::allocator_traits<Allocator>::allocate(m_alloc, newCapacity);
 
     for (size_t i{}; i < pos; i++) {
-      new (newData + i) T{m_data[i]};
+      std::allocator_traits<Allocator>::construct(m_alloc, newData + i, m_data[i]);
     }
 
-    new (newData + pos) T(std::forward<Args>(args)...);
+    std::allocator_traits<Allocator>::construct(m_alloc, newData + pos,
+                                                std::forward<Args>(args)...);
 
     for (size_t i{pos}; i < m_size; i++) {
-      new (newData + i + i) T{m_data[i]};
+      std::allocator_traits<Allocator>::construct(m_alloc, newData + i + 1, m_data[i]);
     }
 
     if (m_data) {
       for (size_t i{}; i < m_size; i++) {
-        m_data[i].~T();
+        std::allocator_traits<Allocator>::destroy(m_alloc, m_data + i);
       }
 
-      ::operator delete(m_data);
+      std::allocator_traits<Allocator>::deallocate(m_alloc, m_data, m_capacity);
     }
 
     m_capacity = newCapacity;
-    m_size = m_size + 1;
+    m_size = newSize;
     m_data = newData;
   }
 
-  [[nodiscard]] constexpr T& front() const noexcept { return m_data[0]; }
-  [[nodiscard]] constexpr T& back() const noexcept { return m_data[m_size - 1]; }
+  [[nodiscard]] constexpr reference front() const noexcept { return m_data[0]; }
+  [[nodiscard]] constexpr reference back() const noexcept { return m_data[m_size - 1]; }
 
-  [[nodiscard]] constexpr T& operator[](size_t index) const noexcept { return m_data[index]; };
-  [[nodiscard]] constexpr T& at(size_t index) const {
+  [[nodiscard]] constexpr reference operator[](size_t index) const noexcept {
+    return m_data[index];
+  };
+
+  [[nodiscard]] constexpr reference at(size_t index) const {
     if (index >= m_size) {
       throw std::runtime_error("MySTL::Vector: Index out of bound");
     }
@@ -313,6 +327,8 @@ class Vector {
   [[nodiscard]] constexpr size_t capacity() const noexcept { return m_capacity; }
   [[nodiscard]] constexpr size_t size() const noexcept { return m_size; }
 
+  [[nodiscard]] constexpr allocator_type get_allocator() const noexcept { return m_alloc; }
+
  private:
   void expandCapacity() {
     if (m_size >= m_capacity) {
@@ -320,9 +336,10 @@ class Vector {
     }
   };
 
+  Allocator m_alloc;
   size_t m_capacity{};
   size_t m_size{};
-  T* m_data{nullptr};
+  pointer m_data{nullptr};
 };
 
 }  // namespace MySTL
