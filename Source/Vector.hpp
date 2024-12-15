@@ -2,9 +2,6 @@
 
 #include <initializer_list>
 #include <memory>
-#include <ostream>
-
-// Implement iterators for ranges
 
 namespace MySTL {
 
@@ -22,7 +19,126 @@ class Vector {
   static_assert(std::is_same<typename allocator_type::value_type, value_type>::value,
                 "Container must be same value_type as its allocator");
 
+  struct Iterator {
+    using iterator_category = std::random_access_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = T;
+    using pointer = T*;
+    using reference = T&;
+
+    explicit Iterator(pointer ptr) noexcept : m_ptr(ptr) {}
+
+    reference operator*() const { return *m_ptr; }
+    pointer operator->() const { return m_ptr; }
+
+    Iterator& operator++() {
+      ++m_ptr;
+      return *this;
+    }
+
+    Iterator operator++(int) {
+      Iterator tmp = *this;
+      ++(*this);
+      return tmp;
+    }
+
+    Iterator& operator--() {
+      --m_ptr;
+      return *this;
+    }
+
+    Iterator operator--(int) {
+      Iterator tmp = *this;
+      --(*this);
+      return tmp;
+    }
+
+    Iterator operator+(difference_type n) const { return Iterator(m_ptr + n); }
+    Iterator operator-(difference_type n) const { return Iterator(m_ptr - n); }
+    difference_type operator-(const Iterator& other) const { return m_ptr - other.m_ptr; }
+
+    Iterator& operator+=(difference_type n) {
+      m_ptr += n;
+      return *this;
+    }
+
+    Iterator& operator-=(difference_type n) {
+      m_ptr -= n;
+      return *this;
+    }
+
+    bool operator==(const Iterator& other) const { return m_ptr == other.m_ptr; }
+    bool operator!=(const Iterator& other) const { return m_ptr != other.m_ptr; }
+    bool operator<(const Iterator& other) const { return m_ptr < other.m_ptr; }
+    bool operator<=(const Iterator& other) const { return m_ptr <= other.m_ptr; }
+    bool operator>(const Iterator& other) const { return m_ptr > other.m_ptr; }
+    bool operator>=(const Iterator& other) const { return m_ptr >= other.m_ptr; }
+
+   private:
+    pointer m_ptr;
+  };
+
+  struct ConstIterator {
+    using iterator_category = std::random_access_iterator_tag;
+    using difference_type = std::ptrdiff_t;
+    using value_type = T;
+    using pointer = const T*;
+    using reference = const T&;
+
+    explicit ConstIterator(pointer ptr) noexcept : m_ptr(ptr) {}
+
+    reference operator*() const { return *m_ptr; }
+    pointer operator->() const { return m_ptr; }
+
+    ConstIterator& operator++() {
+      ++m_ptr;
+      return *this;
+    }
+
+    ConstIterator operator++(int) {
+      ConstIterator tmp = *this;
+      ++(*this);
+      return tmp;
+    }
+
+    ConstIterator& operator--() {
+      --m_ptr;
+      return *this;
+    }
+
+    ConstIterator operator--(int) {
+      ConstIterator tmp = *this;
+      --(*this);
+      return tmp;
+    }
+
+    ConstIterator operator+(difference_type n) const { return ConstIterator(m_ptr + n); }
+    ConstIterator operator-(difference_type n) const { return ConstIterator(m_ptr - n); }
+    difference_type operator-(const ConstIterator& other) const { return m_ptr - other.ptr; }
+
+    ConstIterator& operator+=(difference_type n) {
+      m_ptr += n;
+      return *this;
+    }
+
+    ConstIterator& operator-=(difference_type n) {
+      m_ptr -= n;
+      return *this;
+    }
+
+    bool operator==(const ConstIterator& other) const { return m_ptr == other.m_ptr; }
+    bool operator!=(const ConstIterator& other) const { return m_ptr != other.m_ptr; }
+    bool operator<(const ConstIterator& other) const { return m_ptr < other.m_ptr; }
+    bool operator<=(const ConstIterator& other) const { return m_ptr <= other.m_ptr; }
+    bool operator>(const ConstIterator& other) const { return m_ptr > other.m_ptr; }
+    bool operator>=(const ConstIterator& other) const { return m_ptr >= other.m_ptr; }
+
+   private:
+    pointer m_ptr;
+  };
+
   explicit constexpr Vector(const Allocator& alloc = Allocator()) noexcept : m_alloc(alloc) {};
+
   explicit constexpr Vector(size_t count, const T& item,
                             const Allocator& alloc = Allocator()) noexcept
       : m_alloc(alloc) {
@@ -311,11 +427,20 @@ class Vector {
   [[nodiscard]] constexpr reference front() const noexcept { return m_data[0]; }
   [[nodiscard]] constexpr reference back() const noexcept { return m_data[m_size - 1]; }
 
-  [[nodiscard]] constexpr reference operator[](size_t index) const noexcept {
+  [[nodiscard]] constexpr reference operator[](size_t index) noexcept { return m_data[index]; };
+  [[nodiscard]] constexpr const_reference operator[](size_t index) const noexcept {
     return m_data[index];
   };
 
-  [[nodiscard]] constexpr reference at(size_t index) const {
+  [[nodiscard]] constexpr reference at(size_t index) {
+    if (index >= m_size) {
+      throw std::runtime_error("MySTL::Vector: Index out of bound");
+    }
+
+    return m_data[index];
+  };
+
+  [[nodiscard]] constexpr const_reference at(size_t index) const {
     if (index >= m_size) {
       throw std::runtime_error("MySTL::Vector: Index out of bound");
     }
@@ -329,8 +454,15 @@ class Vector {
 
   [[nodiscard]] constexpr allocator_type get_allocator() const noexcept { return m_alloc; }
 
+  Iterator begin() { return Iterator(&m_data[0]); }
+  Iterator end() { return Iterator(&m_data[m_size]); }
+  ConstIterator begin() const { return ConstIterator(&m_data[0]); }
+  ConstIterator end() const { return ConstIterator(&m_data[m_size]); }
+  ConstIterator cbegin() const { return ConstIterator(&m_data[0]); }
+  ConstIterator cend() const { return ConstIterator(&m_data[m_size]); }
+
  private:
-  void expandCapacity() {
+  void expandCapacity() noexcept {
     if (m_size >= m_capacity) {
       reserve(m_capacity == 0 ? 1 : m_capacity * 2);
     }
@@ -341,5 +473,4 @@ class Vector {
   size_t m_size{};
   pointer m_data{nullptr};
 };
-
 }  // namespace MySTL

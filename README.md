@@ -13,6 +13,7 @@ Requirement: cmake and some c++ compiler (gcc/clang, etc)
 ## Benchmarks Results
 
 MySTL Vector **70.007M/s** vs STD Vector **34.825M/s**
+MySTL Vector with allocator **45.007M/s** vs STD Vector **37.825M/s**
 
 ## Contact
 
