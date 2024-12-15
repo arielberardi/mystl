@@ -40,6 +40,8 @@ struct TestObject {
   }
 
   bool operator==(const TestObject& other) const { return value == other.value; }
+  bool operator<(const TestObject& other) const { return value < other.value; }
+  bool operator>(const TestObject& other) const { return value > other.value; }
 
   int value;
 };
@@ -47,14 +49,16 @@ struct TestObject {
 int main() {
   MySTL::Vector<TestObject> v;
   v.reserve(4);
-  v.emplace_back(1);
-  v.emplace_back(2);
   v.emplace_back(3);
+  v.emplace_back(1);
   v.emplace_back(4);
+  v.emplace_back(2);
 
   std::for_each(v.begin(), v.end(), [](auto& t) { std::cout << t.value << std::endl; });
 
   std::find(v.begin(), v.end(), 2);
+
+  std::sort(v.begin(), v.end());
 
   for (auto& t : v) {
     std::cout << t.value << std::endl;
