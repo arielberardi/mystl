@@ -318,7 +318,7 @@ class Vector {
     m_size = 0;
   }
 
-  constexpr void insert(size_t pos, size_t count, const T& value) noexcept {
+  constexpr Iterator insert(size_t pos, size_t count, const T& value) noexcept {
     if (count == 0 || pos > m_size || !m_data) {
       return;
     }
@@ -353,9 +353,11 @@ class Vector {
     m_capacity = newCapacity;
     m_size = m_size + count;
     m_data = newData;
+
+    return Iterator(m_data[m_size]);
   }
 
-  constexpr void insert(size_t pos, const T& value) noexcept { insert(pos, 1, value); }
+  constexpr Iterator insert(size_t pos, const T& value) noexcept { return insert(pos, 1, value); }
 
   constexpr void push_back(const T& item) noexcept {
     expandCapacity();
