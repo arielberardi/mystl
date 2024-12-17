@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <iostream>
+#include <memory>
 
+#include "UniquePointer.hpp"
 #include "Vector.hpp"
 
 struct TestObject {
@@ -46,21 +48,40 @@ struct TestObject {
   int value;
 };
 
-int main() {
-  MySTL::Vector<TestObject> v;
-  v.reserve(4);
-  v.emplace_back(3);
-  v.emplace_back(1);
-  v.emplace_back(4);
-  v.emplace_back(2);
-
-  std::for_each(v.begin(), v.end(), [](auto& t) { std::cout << t.value << std::endl; });
-
-  std::find(v.begin(), v.end(), 2);
-
-  std::sort(v.begin(), v.end());
-
-  for (auto& t : v) {
-    std::cout << t.value << std::endl;
+template <typename T>
+struct CustomDeleter {
+  constexpr void operator()(TestObject* ptr) noexcept {
+    std::cout << "Custom Deleter" << std::endl;
+    delete ptr;
   }
+};
+
+int main() {
+  // MySTL::Vector<TestObject> v;
+  // v.reserve(4);
+  // v.emplace_back(3);
+  // v.emplace_back(1);
+  // v.emplace_back(4);
+  // v.emplace_back(2);
+
+  // std::for_each(v.begin(), v.end(), [](auto& t) { std::cout << t.value << std::endl; });
+
+  // std::find(v.begin(), v.end(), 2);
+
+  // std::sort(v.begin(), v.end());
+
+  // for (auto& t : v) {
+  //   std::cout << t.value << std::endl;
+  // }
+
+  auto v = MySTL::make_unique<TestObject, CustomDeleter<TestObject>>(1);
+  auto b = MySTL::make_unique<TestObject, CustomDeleter<TestObject>>(2);
+
+  std::cout << v->value << std::endl;
+  std::cout << b->value << std::endl;
+
+  v.swap(b);
+
+  std::cout << v->value << std::endl;
+  std::cout << b->value << std::endl;
 }
