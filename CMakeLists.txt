@@ -62,6 +62,7 @@ foreach(bench_file ${BENCH_FILES})
 endforeach()
 
 ### BUILD TESTS ### 
+
 enable_testing()
 
 set(TEST_FILES

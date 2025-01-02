@@ -43,15 +43,12 @@ class UniquePointer {
   }
 
   [[nodiscard]] UniquePointer& operator=(UniquePointer&& other) noexcept {
-    if (&other == this) {
-      return *this;
+    if (&other != this) {
+      reset(nullptr);
+      m_ptr = other.m_ptr;
+      other.reset(nullptr);
     }
 
-    reset(nullptr);
-
-    m_ptr = other.m_ptr;
-
-    other.reset(nullptr);
     return *this;
   }
 
@@ -60,25 +57,22 @@ class UniquePointer {
   [[nodiscard]] constexpr T* get() const noexcept { return m_ptr; }
 
   constexpr void reset(T* ptr) noexcept {
-    if (m_ptr == ptr) {
-      return;
-    }
-
-    T* oldPtr = m_ptr;
-    m_ptr = ptr;
-
-    if (oldPtr) {
-      m_deleter(oldPtr);
+    if (m_ptr != ptr) {
+      T* oldPtr = std::exchange(m_ptr, ptr);
+      if (oldPtr) {
+        m_deleter(oldPtr);
+      }
     }
   }
 
-  [[nodiscard]] constexpr T* release() {
-    T* temp = m_ptr;
-    m_ptr = nullptr;
-    return temp;
-  }
+  constexpr void reset(std::nullptr_t = nullptr) noexcept { reset(); }
 
-  constexpr void swap(UniquePointer& other) noexcept { std::swap(m_ptr, other.m_ptr); }
+  [[nodiscard]] constexpr T* release() { return std::exchange(m_ptr, nullptr); }
+
+  constexpr void swap(UniquePointer& other) noexcept {
+    std::swap(m_ptr, other.m_ptr);
+    std::swap(m_deleter, other.m_deleter);
+  }
 
   [[nodiscard]] constexpr operator bool() const noexcept { return m_ptr != nullptr; }
 
